@@ -1,0 +1,144 @@
+---
+title: "Predicting Quality of Weight Lifting Activity"
+author: "hkollera"
+date: "22.07.2015"
+output: html_document
+---
+
+# Abstract
+With the upcoming of wearable tracking devices like Nike Fuelband or fitbit it has become fairly easy to track human activity. A common use is to quantify the activity for health reasons. A qualitativ analysis however is uncommon so far, but can produce useful information for different usecases like mistake detection and user feedback about the quality of exercises.
+
+In the report an approach is presented to classify exercises from tracking data by machine learning methods, especially the Random Forest model. Basis of this practical study is the dataset of wight lifting exercises from the [Human Activity Project (HAR)](http://groupware.les.inf.puc-rio.br/har).
+
+# Loading libraries
+
+```{r message=FALSE}
+library(caret)
+library(randomForest)
+```
+
+# Data 
+
+The training data set is avaible at:
+
+> https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data set is available at:
+
+> https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+```{r}
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv",
+destfile="pml-training.csv",method="curl")
+download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv",
+destfile="pml-testing.csv",method="curl")
+train <- read.csv('pml-training.csv')
+test <- read.csv('pml-testing.csv')
+```
+
+The training data has the size:
+```{r}
+dim(train)
+```
+The outcome variable is *classe* with factor levels from A-E. which corresponds to one of the five categories ofUnilateral Dumbbell Biceps Curl  
+
+  * A: performed correctly according to specification;
+  * B: incorrectly throwing elbow to front
+  * C: incorrectly lifting the dumbbell only halfway
+  * D: incorrectly lowering the dumbbell only halfway 
+  * E: incorrectly throwing the hips to the front
+
+```{r}
+summary(train)
+```
+
+A first inspection of the data shows that there is a great number of variables which have a a lot of empty fields or NA , mostly 19216 of 19622. These variables will be removed from the training set.
+
+Also the first 7 columns can be removed, because they only contain information to identify a single datarow, but no information about the activity itself. So all variables, which can be used as predictor variables, have the position description in its name.
+
+```{r}
+isAnyMissing <- sapply(train, function (x) any(is.na(x) | x == ""))
+isPredVar <- !isAnyMissing & grepl("belt|[^(fore)]arm|dumbbell|forearm", names(isAnyMissing))
+predVars <- names(isAnyMissing)[isPredVar]
+```
+Finally we have `r length(predVars)` predictor variables.
+```{r echo=FALSE}
+predVars
+```
+
+Build the subset of the training data set consisting of the classe and the choosen predictors.
+```{r}
+train <- train[,c("classe",predVars)]
+dim(train)
+```
+
+# Building a trainingset
+
+I split the dataset into a 60% training and 40% probing dataset.
+
+```{r}
+set.seed(4321)
+intrain <- createDataPartition(train$classe, p=0.6, list=FALSE)
+training <- train[intrain, ]
+probing <- train[-intrain, ]
+```
+
+# Building a random forest model
+
+Applying the training data set we build a random forest model.
+```{r}
+rfmod <- randomForest(classe ~ ., data = training)
+```
+
+The following plot shows the variables that are estimated to have the most impact as predictors.
+
+```{r}
+varImpPlot(rfmod)
+```
+
+The diagram suggests that the number of predictor variables could be reduced to the 20 most important ones to optimize the computation.  
+
+Next the model is applied to the validation data set to get an estimate of its accuracy.
+
+```{r}
+rfpred <- predict(rfmod, newdata = probing)
+```
+```{r}
+confusionMatrix(rfpred, probing$classe)
+```
+
+The Confusion Matrix showws, that the overall accuracy of the model on the validation data set is 99%. This means that when the model is applied to the independent testing set, there is an out of sample error of 0.0067%.
+
+# Prediction on the test data
+I cut the test dataset to same variables as training set.
+```{r}
+test <- test[,c("problem_id",predVars)]
+```
+The random forest model is applied to the test data set to obtain predictions for 20
+observations.
+
+```{r}
+prediction_test <- predict(rfmod,newdata=test)
+prediction_test
+```
+
+# Submission to Coursera
+At last write submission files to directory *predictionAssignment_files/answers*: 
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  path <- "predictionAssignment_files/answers"
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=file.path(path, filename),quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+pml_write_files(prediction_test)
+```
+
+# References
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) Stuttgart Germany, ACM SIGCHI 2013.
+
+
+
